@@ -86,8 +86,6 @@ async def premium(message: Message):
     try:
 
         checkout_session = stripe.checkout.Session.create(
-            client_reference_id=str(message.from_user.id),
-
             payment_method_types=["card"],
 
             line_items=[
@@ -99,8 +97,8 @@ async def premium(message: Message):
 
             mode="subscription",
 
-            success_url="https://t.me/resumeforge_ai_bot",
-            cancel_url="https://t.me/resumeforge_ai_bot"
+            success_url="https://google.com",
+            cancel_url="https://google.com"
         )
 
         await message.answer(
