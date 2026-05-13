@@ -86,6 +86,17 @@ async def start(message: Message):
 
     conn.commit()
 
+    cursor.execute(
+        """
+        INSERT INTO subscriptions (telegram_id)
+        VALUES (%s)
+        ON CONFLICT (telegram_id) DO NOTHING
+        """,
+        (telegram_id,)
+    )
+
+    conn.commit()
+
     await message.answer(
         "Welcome to ResumeForge AI 🚀",
         reply_markup=main_keyboard
@@ -193,6 +204,32 @@ async def save_profile(message: Message):
 async def ai_resume(message: Message):
     await message.answer("⏳ Creating your resume...")
 
+    cursor.execute(
+        """
+        SELECT plan, resumes_today
+        FROM subscriptions
+        WHERE telegram_id = %s
+        """,
+        (message.from_user.id,)
+    )
+
+    subscription = cursor.fetchone()
+
+    plan = subscription[0]
+    resumes_today = subscription[1]
+
+    if plan == "free" and resumes_today >= 3:
+        await message.answer(
+            """
+    🚫 Free limit reached.
+
+    You used all 3 free resumes today.
+
+    Upgrade to Premium for unlimited resumes 💎
+    """
+        )
+        return
+
     conn.commit()
 
     user_text = message.text
@@ -235,6 +272,17 @@ async def ai_resume(message: Message):
     )
 
     ai_answer = response.choices[0].message.content
+
+    cursor.execute(
+        """
+        UPDATE subscriptions
+        SET resumes_today = resumes_today + 1
+        WHERE telegram_id = %s
+        """,
+        (message.from_user.id,)
+    )
+
+    conn.commit()
 
     cursor.execute(
         """
