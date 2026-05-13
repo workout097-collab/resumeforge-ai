@@ -14,7 +14,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram.filters.command import CommandObject
 scheduler = AsyncIOScheduler()
 
-#load_dotenv(dotenv_path=".env")
+load_dotenv()
+print(os.getenv("STRIPE_SECRET_KEY"))
+
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
