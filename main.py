@@ -197,6 +197,7 @@ async def start(message: Message, command: CommandObject):
 
 
 def reset_daily_limits():
+        conn, cursor = get_db()
         cursor.execute(
             """
             UPDATE subscriptions
