@@ -14,7 +14,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram.filters.command import CommandObject
 scheduler = AsyncIOScheduler()
 
-load_dotenv(dotenv_path=".env")
+#load_dotenv(dotenv_path=".env")
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
@@ -90,7 +90,7 @@ async def premium(message: Message):
 
             line_items=[
                 {
-                    "price": "price_1TWglI3bJAkY3z2O73MkkrUS",
+                    "price": "1TWglI3bJAkY3z2O73MkkrUS",
                     "quantity": 1,
                 }
             ],
