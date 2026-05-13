@@ -79,9 +79,12 @@ Your personal invite link:
         """
     )
 
-
 @dp.message(lambda message: message.text == "💎 Premium")
 async def premium(message: Message):
+
+        await message.answer("Premium clicked")
+
+
 
     try:
 
