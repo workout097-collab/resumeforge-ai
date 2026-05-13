@@ -24,8 +24,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-conn = psycopg2.connect(DATABASE_URL)
-cursor = conn.cursor()
+def get_db():
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    return conn, cursor
 
 ADMIN_ID = 1128720977
 
@@ -54,6 +56,7 @@ main_keyboard = ReplyKeyboardMarkup(
 
 @dp.message(lambda message: message.text == "🎁 Invite Friends")
 async def invite_friends(message: Message):
+    conn, cursor = get_db()
 
     telegram_id = message.from_user.id
 
@@ -74,6 +77,7 @@ Your personal invite link:
 
 @dp.message(lambda message: message.text == "💎 Premium")
 async def premium(message: Message):
+    conn, cursor = get_db()
 
     await message.answer(
         """
@@ -95,6 +99,7 @@ Invite friends and earn free Premium 🎁
 
 @dp.message(lambda message: message.text == "/admin")
 async def admin_panel(message: Message):
+    conn, cursor = get_db()
 
     if message.from_user.id != ADMIN_ID:
         return
@@ -117,6 +122,7 @@ async def admin_panel(message: Message):
 
 @dp.message(CommandStart())
 async def start(message: Message, command: CommandObject):
+    conn, cursor = get_db()
 
     telegram_id = message.from_user.id
 
@@ -159,9 +165,26 @@ async def start(message: Message, command: CommandObject):
     conn.commit()
 
     await message.answer(
-        "Welcome to ResumeForge AI 🚀",
+        """
+    🚀 Welcome to ResumeForge AI
+
+    Create professional resumes and cover letters with AI.
+
+    📄 Features:
+    • AI Resume Generator
+    • Cover Letters
+    • PDF Export
+    • Career Assistant
+    • Smart Profile Memory
+
+    💎 Free Plan:
+    3 resumes per day
+
+    👇 Press "Create Resume" to start
+    """,
         reply_markup=main_keyboard
     )
+
 
 
 def reset_daily_limits():
@@ -190,6 +213,7 @@ async def main():
 
 @dp.message(lambda message: message.text == "📝 Create Resume")
 async def create_resume(message: Message):
+    conn, cursor = get_db()
 
     await message.answer(
         "Tell me what resume you want to create 👇"
@@ -197,6 +221,7 @@ async def create_resume(message: Message):
 
 @dp.message(lambda message: message.text == "💌 Cover Letter")
 async def cover_letter(message: Message):
+    conn, cursor = get_db()
 
     await message.answer(
         "Describe the job and I will create a cover letter ✨"
@@ -204,6 +229,7 @@ async def cover_letter(message: Message):
 
 @dp.message(lambda message: message.text == "⭐ Premium")
 async def premium(message: Message):
+    conn, cursor = get_db()
 
     await message.answer(
         """
@@ -222,6 +248,7 @@ Price: $5/month
 
 @dp.message(lambda message: message.text == "👤 Profile")
 async def profile_info(message: Message):
+    conn, cursor = get_db()
 
     await message.answer(
         """
@@ -285,6 +312,7 @@ async def save_profile(message: Message):
 
 @dp.message()
 async def ai_resume(message: Message):
+    conn, cursor = get_db()
     await message.answer("⏳ Creating your resume...")
 
     cursor.execute(
@@ -348,28 +376,6 @@ async def ai_resume(message: Message):
             {
                 "role": "system",
                 "content": f"""
-    You are an elite professional resume writer and ATS optimization expert.
-
-    Create highly professional, modern, ATS-friendly resumes.
-    
-    Rules:
-    - Use strong professional wording
-    - Use bullet points
-    - Make resumes concise and impactful
-    - Highlight achievements and measurable results
-    - Make formatting clean and modern
-    - Optimize for recruiters and HR systems
-    - Focus on clarity and readability
-    - Use professional sections:
-      Summary
-      Skills
-      Experience
-      Education
-    - Make the resume look premium
-    """
-
-    User profile:
-
     Profession: {profile[0] if profile else "Unknown"}
     Skills: {profile[1] if profile else "Unknown"}
     Experience: {profile[2] if profile else "Unknown"}
@@ -377,14 +383,18 @@ async def ai_resume(message: Message):
 
     Create professional resumes and career responses.
     """
-     {
-        "role": "user",
-        "content": f"""
-     {user_text}
+            },
+            {
+                "role": "user",
+                "content": f"""
+    {user_text}
 
-     Please generate a complete professional resume.
-     """
-     }
+    Please generate a complete professional resume.
+    """
+            }
+        ]
+
+    )
     ai_answer = response.choices[0].message.content
 
     cursor.execute(
