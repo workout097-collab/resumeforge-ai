@@ -275,6 +275,8 @@ Education: Computer Science
 @dp.message(lambda message: "Profession:" in message.text)
 async def save_profile(message: Message):
 
+    con, cursor = get_db()
+
     text = message.text
 
     lines = text.split("\n")
