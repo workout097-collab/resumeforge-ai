@@ -34,9 +34,6 @@ def get_db():
 ADMIN_ID = 1128720977
 
 
-
-dp = Dispatcher()
-
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
@@ -50,7 +47,9 @@ main_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="👤 Profile")
         ],
         [
-            KeyboardButton(text="🎁 Invite Friends")
+            KeyboardButton(text="🎁 Invite Friends"),
+            KeyboardButton(text="❓ Help")
+
         ]
     ],
     resize_keyboard=True
