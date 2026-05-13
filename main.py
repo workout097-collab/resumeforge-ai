@@ -9,6 +9,7 @@ import asyncio
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from fpdf import FPDF
 from aiogram.types import FSInputFile
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 
 load_dotenv(dotenv_path=".env")
@@ -102,7 +103,29 @@ async def start(message: Message):
         reply_markup=main_keyboard
     )
 
+
+def reset_daily_limits():
+        cursor.execute(
+            """
+            UPDATE subscriptions
+            SET resumes_today = 0
+            """
+        )
+
+        conn.commit()
+
+        print("✅ Daily limits reset")
+
 async def main():
+    scheduler.add_job(
+        reset_daily_limits,
+        "cron",
+        hour=0,
+        minute=0
+    )
+
+    scheduler.start()
+
     await dp.start_polling(bot)
 
 @dp.message(lambda message: message.text == "📝 Create Resume")
