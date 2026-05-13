@@ -17,7 +17,7 @@ scheduler = AsyncIOScheduler()
 load_dotenv()
 print(os.getenv("STRIPE_SECRET_KEY"))
 
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+stripe.api_key = "sk_test_ТВІЙ КЛЮЧ_13_STRIPE"
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
