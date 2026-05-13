@@ -1,8 +1,5 @@
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
-from flask import Flask, request
-from aiohttp import web
-import threading
 from aiogram.types import Message
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -505,29 +502,6 @@ async def ai_resume(message: Message):
         caption="📄 Your resume is ready!"
     )
 
-async def stripe_webhook(request):
-    data = await request.json()
-
-    if data["type"] == "checkout.session.completed":
-        session = data["data"]["object"]
-
-        telegram_id = session.get("client_reference_id")
-
-        conn, cursor = get_db()
-
-        cursor.execute("""
-            UPDATE subscriptions
-            SET is_premium = TRUE
-            WHERE telegram_id = %s
-        """, (telegram_id,))
-
-        conn.commit()
-
-    return web.Response(text="ok")
-
-
-webhook_app = web.Application()
-webhook_app.router.add_post('/stripe-webhook', stripe_webhook)
 
 if __name__ == "__main__":
     asyncio.run(main())
