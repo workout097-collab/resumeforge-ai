@@ -10,7 +10,8 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from fpdf import FPDF
 from aiogram.types import FSInputFile
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
+from aiogram.filters.command import CommandObject
+scheduler = AsyncIOScheduler()
 
 load_dotenv(dotenv_path=".env")
 client = OpenAI(
@@ -41,12 +42,56 @@ main_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="💌 Cover Letter")
         ],
         [
-            KeyboardButton(text="⭐ Premium"),
+            KeyboardButton(text="💎 Premium"),
             KeyboardButton(text="👤 Profile")
+        ],
+        [
+            KeyboardButton(text="🎁 Invite Friends")
         ]
     ],
     resize_keyboard=True
 )
+
+@dp.message(lambda message: message.text == "🎁 Invite Friends")
+async def invite_friends(message: Message):
+
+    telegram_id = message.from_user.id
+
+    invite_link = f"https://t.me/resumeforge_ai_bot?start={telegram_id}"
+
+    await message.answer(
+        f"""
+🎁 Invite Friends
+
+Invite 3 friends and get FREE Premium 💎
+
+Your personal invite link:
+
+{invite_link}
+        """
+    )
+
+
+@dp.message(lambda message: message.text == "💎 Premium")
+async def premium(message: Message):
+
+    await message.answer(
+        """
+💎 ResumeForge Premium
+
+🚀 Unlimited resumes
+🚀 Unlimited cover letters
+🚀 Better AI quality
+🚀 Faster responses
+🚀 Premium resume templates
+🚀 Future AI career tools
+
+💰 Price:
+€9/month
+
+Invite friends and earn free Premium 🎁
+        """
+    )
 
 @dp.message(lambda message: message.text == "/admin")
 async def admin_panel(message: Message):
@@ -71,9 +116,24 @@ async def admin_panel(message: Message):
 
 
 @dp.message(CommandStart())
-async def start(message: Message):
+async def start(message: Message, command: CommandObject):
 
     telegram_id = message.from_user.id
+
+    if referrer_id:
+
+        if int(referrer_id) != telegram_id:
+            cursor.execute(
+                """
+                UPDATE subscriptions
+                SET referrals = referrals + 1
+                WHERE telegram_id = %s
+                """,
+                (referrer_id,)
+            )
+
+            conn.commit()
+
     username = message.from_user.username
 
     cursor.execute(
@@ -237,6 +297,19 @@ async def ai_resume(message: Message):
     )
 
     subscription = cursor.fetchone()
+
+    if not subscription:
+        cursor.execute(
+            """
+            INSERT INTO subscriptions (telegram_id)
+            VALUES (%s)
+            """,
+            (message.from_user.id,)
+        )
+
+        conn.commit()
+
+        subscription = ("free", 0)
 
     plan = subscription[0]
     resumes_today = subscription[1]
