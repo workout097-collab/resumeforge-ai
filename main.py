@@ -80,27 +80,33 @@ Your personal invite link:
 
 @dp.message(lambda message: message.text == "💎 Premium")
 async def premium(message: Message):
-    checkout_session = stripe.checkout.Session.create(
-        client_reference_id=str(message.from_user.id),
 
-        payment_method_types=["card"],
+    try:
 
-        line_items=[
-            {
-                "price": "price_1TWcnR3bJAkY3z2OIGrlk3S0",
-                "quantity": 1,
-            }
-        ],
+        checkout_session = stripe.checkout.Session.create(
+            client_reference_id=str(message.from_user.id),
 
-        mode="subscription",
+            payment_method_types=["card"],
 
-        success_url="https://t.me/resumeforge_ai_bot",
-        cancel_url="https://t.me/resumeforge_ai_bot"
-    )
+            line_items=[
+                {
+                    "price": "price_1TWcnR3bJAkY3z2OIGrlk3S0",
+                    "quantity": 1,
+                }
+            ],
 
-    await message.answer(
-        f"💳 Pay here:\n\n{checkout_session.url}"
-    )
+            mode="subscription",
+
+            success_url="https://t.me/resumeforge_ai_bot",
+            cancel_url="https://t.me/resumeforge_ai_bot"
+        )
+
+        await message.answer(
+            f"💳 Pay here:\n\n{checkout_session.url}"
+        )
+
+    except Exception as e:
+        await message.answer(f"Stripe error:\n{e}")
 
 @dp.message(lambda message: message.text == "/admin")
 async def admin_panel(message: Message):
