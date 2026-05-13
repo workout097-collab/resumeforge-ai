@@ -348,7 +348,25 @@ async def ai_resume(message: Message):
             {
                 "role": "system",
                 "content": f"""
-    You are a professional resume writer.
+    You are an elite professional resume writer and ATS optimization expert.
+
+    Create highly professional, modern, ATS-friendly resumes.
+    
+    Rules:
+    - Use strong professional wording
+    - Use bullet points
+    - Make resumes concise and impactful
+    - Highlight achievements and measurable results
+    - Make formatting clean and modern
+    - Optimize for recruiters and HR systems
+    - Focus on clarity and readability
+    - Use professional sections:
+      Summary
+      Skills
+      Experience
+      Education
+    - Make the resume look premium
+    """
 
     User profile:
 
@@ -359,14 +377,14 @@ async def ai_resume(message: Message):
 
     Create professional resumes and career responses.
     """
-            },
-            {
-                "role": "user",
-                "content": user_text
-            }
-        ]
-    )
+     {
+        "role": "user",
+        "content": f"""
+     {user_text}
 
+     Please generate a complete professional resume.
+     """
+     }
     ai_answer = response.choices[0].message.content
 
     cursor.execute(
@@ -401,11 +419,29 @@ async def ai_resume(message: Message):
     pdf = FPDF()
     pdf.add_page()
 
+    pdf.set_fill_color(30, 30, 50)
+
+    pdf.rect(0, 0, 210, 20, "F")
+
+    pdf.set_font("Arial", "B", 20)
+
+    pdf.cell(200, 10, "ResumeForge AI", ln=True)
+
+    pdf.ln(10)
+
     pdf.set_font("Arial", size=12)
+
+    pdf.set_text_color(40, 40, 40)
 
     clean_text = ai_answer.encode("latin-1", "replace").decode("latin-1")
 
-    pdf.multi_cell(0, 10, clean_text)
+
+
+    pdf.multi_cell(
+        0,
+        8,
+        clean_text
+    )
 
     pdf_file = "resume.pdf"
 
