@@ -128,7 +128,7 @@ async def admin_panel(message: Message):
 
 @dp.message(CommandStart())
 async def start(message: Message, command: CommandObject):
-    await message.answer(str(message.from_user.id))
+
     conn, cursor = get_db()
 
     telegram_id = message.from_user.id
@@ -318,7 +318,24 @@ async def save_profile(message: Message):
         "✅ Profile saved!"
     )
 
+@dp.message(lambda message: message.text == "❓ Help")
+async def help_menu(message: Message):
 
+    await message.answer(
+        """
+📌 How to use ResumeForge AI
+
+1. Press 📝 Create Resume
+2. Describe your dream job
+3. AI creates a professional resume
+4. Download PDF instantly
+
+💎 Premium:
+• Unlimited resumes
+• Better AI quality
+• Cover letters
+"""
+    )
 
 
 
