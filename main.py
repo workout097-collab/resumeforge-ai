@@ -17,7 +17,7 @@ scheduler = AsyncIOScheduler()
 load_dotenv()
 print(os.getenv("STRIPE_SECRET_KEY"))
 
-stripe.api_key = "sk_test_ТВІЙ КЛЮЧ_13_STRIPE"
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
@@ -82,34 +82,9 @@ Your personal invite link:
 @dp.message(lambda message: message.text == "💎 Premium")
 async def premium(message: Message):
 
-        await message.answer("Premium clicked")
+    await message.answer("Premium clicked")
 
 
-
-    try:
-
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-
-            line_items=[
-                {
-                    "price": "price_1TWi1q3bJAkY3z2O32wXHmSM",
-                    "quantity": 1,
-                }
-            ],
-
-            mode="subscription",
-
-            success_url="https://google.com",
-            cancel_url="https://google.com"
-        )
-
-        await message.answer(
-            f"💳 Pay here:\n\n{checkout_session.url}"
-        )
-
-    except Exception as e:
-        await message.answer(f"Stripe error:\n{e}")
 
 @dp.message(lambda message: message.text == "/admin")
 async def admin_panel(message: Message):
