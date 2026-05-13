@@ -1,8 +1,13 @@
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
+from flask import Flask, request
+from aiohttp import web
+import threading
+app = Flask(__name__)
 from aiogram.types import Message
 from openai import OpenAI
 from dotenv import load_dotenv
+import stripe
 import os
 import psycopg2
 import asyncio
@@ -14,6 +19,7 @@ from aiogram.filters.command import CommandObject
 scheduler = AsyncIOScheduler()
 
 load_dotenv(dotenv_path=".env")
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
@@ -54,6 +60,18 @@ main_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+@app.route("/stripe-webhook", methods=["POST"])
+def stripe_webhook():
+
+    payload = request.json
+
+    print(payload)
+
+    return "", 200
+
+def run_webhook():
+    app.run(host="0.0.0.0", port=10000)
+
 @dp.message(lambda message: message.text == "🎁 Invite Friends")
 async def invite_friends(message: Message):
     conn, cursor = get_db()
@@ -77,24 +95,29 @@ Your personal invite link:
 
 @dp.message(lambda message: message.text == "💎 Premium")
 async def premium(message: Message):
-    conn, cursor = get_db()
+
+    checkout_session = stripe.checkout.Session.create(
+        client_reference_id=str(message.from_user.id),
+        payment_method_types=["card"],
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {
+                        "name": "ResumeForge AI Premium"
+                    },
+                    "unit_amount": 900,
+                },
+                "quantity": 1,
+            }
+        ],
+        mode="payment",
+        success_url="https://t.me/resumeforge_ai_bot",
+        cancel_url="https://t.me/resumeforge_ai_bot"
+    )
 
     await message.answer(
-        """
-💎 ResumeForge Premium
-
-🚀 Unlimited resumes
-🚀 Unlimited cover letters
-🚀 Better AI quality
-🚀 Faster responses
-🚀 Premium resume templates
-🚀 Future AI career tools
-
-💰 Price:
-€9/month
-
-Invite friends and earn free Premium 🎁
-        """
+        f"💳 Pay here:\n\n{checkout_session.url}"
     )
 
 @dp.message(lambda message: message.text == "/admin")
@@ -122,6 +145,7 @@ async def admin_panel(message: Message):
 
 @dp.message(CommandStart())
 async def start(message: Message, command: CommandObject):
+    await message.answer(str(message.from_user.id))
     conn, cursor = get_db()
 
     telegram_id = message.from_user.id
@@ -212,6 +236,26 @@ async def main():
     scheduler.start()
 
     await dp.start_polling(bot)
+
+@dp.message()
+async def activate_premium(message: Message):
+
+    user_id = int(message.text.split("_")[1])
+
+    conn, cursor = get_db()
+
+    cursor.execute(
+        """
+        UPDATE subscriptions
+        SET is_premium = TRUE
+        WHERE telegram_id = %s
+        """,
+        (user_id,)
+    )
+
+    conn.commit()
+
+    await message.answer("✅ Premium activated")
 
 @dp.message(lambda message: message.text == "📝 Create Resume")
 async def create_resume(message: Message):
@@ -337,24 +381,26 @@ async def ai_resume(message: Message):
             (message.from_user.id,)
         )
 
-        conn.commit()
-
-        subscription = ("free", 0)
-
-    plan = subscription[0]
-    resumes_today = subscription[1]
-
-    if plan == "free" and resumes_today >= 3:
-        await message.answer(
+        cursor.execute(
             """
-    🚫 Free limit reached.
-
-    You used all 3 free resumes today.
-
-    Upgrade to Premium for unlimited resumes 💎
-    """
+            SELECT resumes_today, is_premium
+            FROM subscriptions
+            WHERE telegram_id = %s
+            """,
+            (message.from_user.id,)
         )
-        return
+
+        subscription = cursor.fetchone()
+
+        resumes_today = subscription[0]
+        is_premium = subscription[1]
+
+        if not is_premium and resumes_today >= 3:
+            await message.answer(
+                "❌ Free limit reached."
+            )
+
+            return
 
     conn.commit()
 
@@ -466,5 +512,30 @@ async def ai_resume(message: Message):
         caption="📄 Your resume is ready!"
     )
 
+async def stripe_webhook(request):
+    data = await request.json()
+
+    if data["type"] == "checkout.session.completed":
+        session = data["data"]["object"]
+
+        telegram_id = session.get("client_reference_id")
+
+        conn, cursor = get_db()
+
+        cursor.execute("""
+            UPDATE subscriptions
+            SET is_premium = TRUE
+            WHERE telegram_id = %s
+        """, (telegram_id,))
+
+        conn.commit()
+
+    return web.Response(text="ok")
+
+
+app = web.Application()
+app.router.add_post('/stripe-webhook', stripe_webhook)
+
 if __name__ == "__main__":
+    threading.Thread(target=run_webhook).start()
     asyncio.run(main())
