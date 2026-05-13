@@ -31,7 +31,7 @@ def get_db():
 
 ADMIN_ID = 1128720977
 
-cursor = conn.cursor()
+
 
 dp = Dispatcher()
 
@@ -125,6 +125,8 @@ async def start(message: Message, command: CommandObject):
     conn, cursor = get_db()
 
     telegram_id = message.from_user.id
+
+    referrer_id = None
 
     if referrer_id:
 
