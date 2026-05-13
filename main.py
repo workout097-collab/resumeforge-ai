@@ -238,23 +238,7 @@ async def cover_letter(message: Message):
         "Describe the job and I will create a cover letter ✨"
     )
 
-@dp.message(lambda message: message.text == "⭐ Premium")
-async def premium(message: Message):
-    conn, cursor = get_db()
 
-    await message.answer(
-        """
-⭐ Premium Plan
-
-• Unlimited resumes
-• Better AI quality
-• PDF export
-• Cover letters
-• Resume memory
-
-Price: $5/month
-"""
-    )
 @dp.message(lambda message: message.text == "👤 Profile")
 async def profile_info(message: Message):
 
