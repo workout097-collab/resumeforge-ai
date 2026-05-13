@@ -255,14 +255,40 @@ async def premium(message: Message):
 Price: $5/month
 """
     )
-
-
 @dp.message(lambda message: message.text == "👤 Profile")
 async def profile_info(message: Message):
+
     conn, cursor = get_db()
 
-    await message.answer(
+    cursor.execute(
         """
+        SELECT is_premium, referrals, resumes_today
+        FROM subscriptions
+        WHERE telegram_id = %s
+        """,
+        (message.from_user.id,)
+    )
+
+    subscription = cursor.fetchone()
+
+    is_premium = subscription[0]
+    referrals = subscription[1]
+    resumes_today = subscription[2]
+
+    status = "💎 PREMIUM" if is_premium else "🆓 FREE"
+
+    await message.answer(
+        f"""
+👤 Your Profile
+
+{status}
+
+📄 Resumes today: {resumes_today}/3
+
+👥 Referrals: {referrals}/3
+
+━━━━━━━━━━
+
 Send your profile like this:
 
 Profession: Python Developer
