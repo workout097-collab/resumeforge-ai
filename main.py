@@ -13,6 +13,7 @@ from aiogram.types import FSInputFile
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram.filters.command import CommandObject
 scheduler = AsyncIOScheduler()
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 load_dotenv()
 print(os.getenv("STRIPE_SECRET_KEY"))
@@ -100,8 +101,20 @@ async def premium(message: Message):
             cancel_url="https://google.com"
         )
 
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="💳 Buy Premium",
+                        url=checkout_session.url
+                    )
+                ]
+            ]
+        )
+
         await message.answer(
-            f"💳 Pay here:\n\n{checkout_session.url}"
+            "💎 Premium Subscription",
+            reply_markup=keyboard
         )
 
     except Exception as e:
