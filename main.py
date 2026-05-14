@@ -89,7 +89,7 @@ async def premium(message: Message):
 
             line_items=[
                 {
-                    "price": "price_1TWjWn3bJAkY3z2O2HTKol2C",
+                    "price": "price_1TWsnV3bJAkY3z2OPYDLUEMy",
                     "quantity": 1,
                 }
             ],
