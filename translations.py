@@ -1,0 +1,37 @@
+translations = {
+    "ua": {
+        "welcome": "🚀 Ласкаво просимо до ResumeForge AI\n\nСтворюй професійні резюме та супровідні листи з AI.\n\n📄 Можливості:\n• AI-генерація резюме\n• Супровідні листи\n• Експорт у PDF\n• Кар'єрний асистент\n• Розумний профіль\n\n💎 Безкоштовний план:\n3 резюме на день\n\n👇 Натисни 'Створити резюме' щоб почати",
+        "create_resume": "📝 Створити резюме",
+        "cover_letter": "💌 Супровідний лист",
+        "premium": "💎 Преміум",
+        "profile": "👤 Профіль",
+        "invite_friends": "🎁 Запросити друзів",
+        "help": "❓ Допомога",
+        "premium_subscription": "💎 Преміум підписка",
+        "buy_premium": "Купити Преміум",
+        "profile_info": "👤 Твій профіль\n\nСтатус: {status}\n📄 Резюме сьогодні: {resumes_today}/3\n👥 Запрошення: {referrals}/3\n\nНадішли свій профіль у такому форматі:\n\nПрофесія: Python Developer\nНавички: FastAPI, PostgreSQL, Docker\nДосвід: 2 роки\nОсвіта: Комп'ютерні науки",
+        "profile_saved": "✅ Профіль збережено!",
+        "free_limit": "❌ Безкоштовний ліміт вичерпано. Купи Premium для безліміту.",
+        "creating_resume": "⏳ Створюю твоє резюме...",
+        "resume_ready": "📄 Твоє резюме готове!",
+        "invite_text": "🎁 Запроси друзів\n\nЗапроси 3 друзів та отримай БЕЗКОШТОВНИЙ Преміум 💎\n\nТвоє персональне посилання:\n{invite_link}",
+    },
+    "en": {
+        "welcome": "🚀 Welcome to ResumeForge AI\n\nCreate professional resumes and cover letters with AI.\n\n📄 Features:\n• AI Resume Generator\n• Cover Letters\n• PDF Export\n• Career Assistant\n• Smart Profile Memory\n\n💎 Free Plan:\n3 resumes per day\n\n👇 Press 'Create Resume' to start",
+        "create_resume": "📝 Create Resume",
+        "cover_letter": "💌 Cover Letter",
+        "premium": "💎 Premium",
+        "profile": "👤 Profile",
+        "invite_friends": "🎁 Invite Friends",
+        "help": "❓ Help",
+        "premium_subscription": "💎 Premium Subscription",
+        "buy_premium": "Buy Premium",
+        "profile_info": "👤 Your Profile\n\nStatus: {status}\n📄 Resumes today: {resumes_today}/3\n👥 Referrals: {referrals}/3\n\nSend your profile like this:\n\nProfession: Python Developer\nSkills: FastAPI, PostgreSQL, Docker\nExperience: 2 years\nEducation: Computer Science",
+        "profile_saved": "✅ Profile saved!",
+        "free_limit": "❌ Free limit reached. Buy Premium for unlimited.",
+        "creating_resume": "⏳ Creating your resume...",
+        "resume_ready": "📄 Your resume is ready!",
+        "invite_text": "🎁 Invite Friends\n\nInvite 3 friends and get FREE Premium 💎\n\nYour personal invite link:\n{invite_link}",
+    }
+}
+
