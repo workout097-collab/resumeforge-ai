@@ -51,89 +51,113 @@ def get_db():
 
 ADMIN_ID = 1128720977
 
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📝 Створити резюме")],
-        [KeyboardButton(text="🚀 Створити резюме (покроково)")],  # ← нова кнопка
-        [KeyboardButton(text="💌 Супровідний лист")],
-        [KeyboardButton(text="💎 Преміум"), KeyboardButton(text="👤 Профіль")],
-        [KeyboardButton(text="🎁 Запросити друзів"), KeyboardButton(text="❓ Допомога")]
-    ],
-    resize_keyboard=True
-)
+def get_main_keyboard(language="en"):
+    if language == "ua":
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📝 Створити резюме")],
+                [KeyboardButton(text="🚀 Створити резюме (покроково)")],
+                [KeyboardButton(text="💌 Супровідний лист")],
+                [KeyboardButton(text="💎 Преміум"), KeyboardButton(text="👤 Профіль")],
+                [KeyboardButton(text="🎁 Запросити друзів"), KeyboardButton(text="❓ Допомога")]
+            ],
+            resize_keyboard=True
+        )
+    else:
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📝 Create Resume")],
+                [KeyboardButton(text="🚀 Create Resume (step by step)")],
+                [KeyboardButton(text="💌 Cover Letter")],
+                [KeyboardButton(text="💎 Premium"), KeyboardButton(text="👤 Profile")],
+                [KeyboardButton(text="🎁 Invite Friends"), KeyboardButton(text="❓ Help")]
+            ],
+            resize_keyboard=True
+        )
+    return keyboard
 
 
-@dp.message(lambda message: message.text.lower().startswith(("швидке резюме", "швидко резюме", "quick resume")))
+@dp.message(
+    lambda message: message.text.lower().startswith(("швидке резюме", "швидко резюме", "quick resume", "quick")))
 async def quick_resume(message: Message):
     user_text = message.text
 
-    # Видаляємо команду з тексту
-    user_text = user_text.replace("швидке резюме", "").replace("швидко резюме", "").replace("quick resume", "").strip()
+    # Видаляємо команду з тексту (обидві мови)
+    user_text = user_text.replace("швидке резюме", "").replace("швидко резюме", "").replace("quick resume", "").replace(
+        "quick", "").strip()
 
     if not user_text:
         await message.answer(
             "✍️ Напиши коротко про себе, наприклад:\n\n"
-            "`швидке резюме: Python developer, 2 роки, Django, PostgreSQL`\n\n"
+            "🇺🇦 `швидке резюме: Python developer, 2 роки, Django, PostgreSQL`\n\n"
+            "🇬🇧 `quick resume: Python developer, 2 years, Django, PostgreSQL`\n\n"
             "Або просто: `Junior Python developer`"
         )
         return
 
-    await message.answer(f"⏳ Створюю резюме для: {user_text}...")
+    await message.answer(f"⏳ Creating your resume for: {user_text}...")
 
-    # Покращений промпт для швидкого резюме
+    # Покращений промпт для швидкого резюме (англійською, бо AI краще розуміє)
     system_prompt = f"""
-    Ти професійний автор резюме. На основі опису користувача створи повне, професійне резюме.
+    You are a professional resume writer. Create a complete, professional resume based on the user's description.
 
-    ОПИС КОРИСТУВАЧА: {user_text}
+    USER DESCRIPTION: {user_text}
 
-    **ВАЖЛИВО:**
-    - Використовуй сучасний професійний тон
-    - Додай реалістичні навички, відповідні до опису
-    - Якщо досвід не вказаний — додай типовий для цієї професії
-    - Використовуй стандартні заголовки: "Досвід роботи", "Навички", "Освіта", "Про себе"
-    - Не використовуй таблиці або колонки
-    - Додай 1-2 досягнення з цифрами (реалістичні)
+    **IMPORTANT GUIDELINES:**
+    - Use a modern, professional tone
+    - Add realistic skills relevant to the description
+    - If experience is not specified, add typical experience for this profession
+    - Use standard ATS-friendly headings: "Work Experience", "Skills", "Education", "Summary"
+    - Do NOT use tables, columns, or graphics
+    - Add 1-2 quantifiable achievements (realistic numbers)
+    - Create an ATS-optimized resume
 
-    Створи ATS-оптимізоване резюме.
+    Generate a professional resume in English.
     """
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "Створи професійне резюме."}
-        ]
-    )
-    ai_answer = response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Create a professional resume."}
+            ],
+            timeout=30.0
+        )
+        ai_answer = response.choices[0].message.content
+    except Exception as e:
+        await message.answer(f"❌ AI error: {str(e)}\nPlease try again later.")
+        return
 
     # Генерація DOCX
     docx_file = generate_docx(ai_answer, "resume.docx")
     docx_document = FSInputFile(docx_file)
 
-    # Генерація
-    # Генерація PDF з підтримкою української
-    # Спрощена генерація PDF
-    # Генерація PDF - остаточний варіант
+    # Генерація PDF
     pdf = FPDF()
     pdf.add_page()
-    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
-    pdf.set_font("DejaVu", "", 12)
+
+    # Спроба використати шрифт з кирилицею, якщо є
+    try:
+        pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+        pdf.set_font("DejaVu", "", 12)
+    except:
+        pdf.set_font("Helvetica", "", 12)
 
     # Заголовок
-    pdf.set_font("DejaVu", "B", 20)
+    pdf.set_font("Helvetica", "B", 20)
     pdf.cell(0, 10, "Professional Resume", ln=True, align='C')
-    pdf.set_font("DejaVu", "I", 10)
+    pdf.set_font("Helvetica", "I", 10)
     pdf.cell(0, 10, "Generated by ResumeForge AI", ln=True, align='C')
     pdf.ln(10)
 
-    # Тіло: пишемо кожен символ окремо, щоб уникнути проблем з кодуванням
-    pdf.set_font("DejaVu", "", 12)
+    # Тіло
+    pdf.set_font("Helvetica", "", 12)
     for line in ai_answer.split('\n'):
-        # Переконуємося, що рядок - це рядок, а не байти
         if isinstance(line, bytes):
             line = line.decode('utf-8')
-        # Розбиваємо довгі рядки (більше 80 символів) для коректного переносу
         while len(line) > 80:
             pdf.cell(0, 6, line[:80], ln=True)
             line = line[80:]
@@ -141,9 +165,11 @@ async def quick_resume(message: Message):
         pdf.ln(2)
 
     pdf.output("resume.pdf")
+    pdf_document = FSInputFile("resume.pdf")
+
     # Надсилаємо обидва файли
-    await message.answer_document(document=FSInputFile("resume.pdf"), caption="📄 Твоє резюме (PDF) готове!")
-    await message.answer_document(document=docx_document, caption="📝 Твоє резюме (DOCX) — можна редагувати у Word!")
+    await message.answer_document(document=pdf_document, caption="📄 Your resume (PDF) is ready!")
+    await message.answer_document(document=docx_document, caption="📝 Your resume (DOCX) — editable in Word!")
 
 @dp.message(lambda message: message.text == "🚀 Створити резюме (покроково)")
 async def start_resume_wizard(message: Message, state: FSMContext):
@@ -376,35 +402,88 @@ async def admin_panel(message: Message):
 
 @dp.message(CommandStart())
 async def start(message: Message, command: CommandObject):
-        lang = "ua"
-        conn, cursor = get_db()
-        telegram_id = message.from_user.id
+    conn, cursor = get_db()
+    telegram_id = message.from_user.id
 
-        # Реферальна логіка
-        args = command.args
-        referrer_id = int(args) if args and args.isdigit() else None
+    # Реферальна логіка
+    args = command.args
+    referrer_id = int(args) if args and args.isdigit() else None
 
-        if referrer_id and referrer_id != telegram_id:
-            cursor.execute(
-                "UPDATE subscriptions SET referrals = referrals + 1 WHERE telegram_id = %s",
-                (referrer_id,)
-            )
-            conn.commit()
-
-        # Збереження користувача
-        username = message.from_user.username
+    if referrer_id and referrer_id != telegram_id:
         cursor.execute(
-            "INSERT INTO users (telegram_id, username) VALUES (%s, %s) ON CONFLICT (telegram_id) DO NOTHING",
-            (telegram_id, username)
-        )
-        cursor.execute(
-            "INSERT INTO subscriptions (telegram_id) VALUES (%s) ON CONFLICT (telegram_id) DO NOTHING",
-            (telegram_id,)
+            "UPDATE subscriptions SET referrals = referrals + 1 WHERE telegram_id = %s",
+            (referrer_id,)
         )
         conn.commit()
 
-        # Тільки українське вітання
-        await message.answer(translations[lang]["welcome"], reply_markup=main_keyboard)
+    # Збереження користувача
+    username = message.from_user.username
+    cursor.execute(
+        "INSERT INTO users (telegram_id, username) VALUES (%s, %s) ON CONFLICT (telegram_id) DO NOTHING",
+        (telegram_id, username)
+    )
+    cursor.execute(
+        "INSERT INTO subscriptions (telegram_id) VALUES (%s) ON CONFLICT (telegram_id) DO NOTHING",
+        (telegram_id,)
+    )
+    conn.commit()
+
+    # Кнопки вибору мови
+    language_keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🇬🇧 English"), KeyboardButton(text="🇺🇦 Українська")]
+        ],
+        resize_keyboard=True
+    )
+
+    await message.answer(
+        "🌍 Choose your language / Оберіть мову:",
+        reply_markup=language_keyboard
+    )
+
+
+@dp.message(lambda message: message.text == "🇬🇧 English")
+async def set_english(message: Message):
+    user_id = message.from_user.id
+    set_language_db(user_id, "en")
+
+    await message.answer(
+        "🇬🇧 English enabled!\n\n"
+        "🚀 Welcome to ResumeForge AI\n\n"
+        "Create professional resumes and cover letters with AI.\n\n"
+        "📄 Features:\n"
+        "• AI Resume Generator\n"
+        "• Cover Letters\n"
+        "• PDF Export\n"
+        "• Career Assistant\n"
+        "• Smart Profile Memory\n\n"
+        "💎 Free Plan:\n"
+        "3 resumes per day\n\n"
+        "👇 Press 'Create Resume' to start",
+        reply_markup=get_main_keyboard("en")
+    )
+
+
+@dp.message(lambda message: message.text == "🇺🇦 Українська")
+async def set_ukrainian(message: Message):
+    user_id = message.from_user.id
+    set_language_db(user_id, "ua")
+
+    await message.answer(
+        "🇺🇦 Українська увімкнена!\n\n"
+        "🚀 Ласкаво просимо до ResumeForge AI\n\n"
+        "Створюй професійні резюме та супровідні листи з AI.\n\n"
+        "📄 Можливості:\n"
+        "• AI-генерація резюме\n"
+        "• Супровідні листи\n"
+        "• Експорт у PDF\n"
+        "• Кар'єрний асистент\n"
+        "• Розумний профіль\n\n"
+        "💎 Безкоштовний план:\n"
+        "3 резюме на день\n\n"
+        "👇 Натисни 'Створити резюме' щоб почати",
+        reply_markup=get_main_keyboard("ua")
+    )
 
 
 
