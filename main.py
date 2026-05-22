@@ -5,6 +5,7 @@ from aiogram.filters import StateFilter
 from aiogram.filters import Command, CommandStart  # ← ДОДАЙ Command
 from translations import translations
 from aiogram.types import Message
+from database import set_language_db, get_language_db
 from openai import OpenAI
 from dotenv import load_dotenv
 from docx import Document
@@ -77,6 +78,51 @@ def get_main_keyboard(language="en"):
             resize_keyboard=True
         )
     return keyboard
+
+
+@dp.message(lambda message: message.text == "🇬🇧 English")
+async def set_english(message: Message):
+    user_id = message.from_user.id
+    set_language_db(user_id, "en")
+
+    await message.answer(
+        "🇬🇧 English enabled!\n\n"
+        "🚀 Welcome to ResumeForge AI\n\n"
+        "Create professional resumes and cover letters with AI.\n\n"
+        "📄 Features:\n"
+        "• AI Resume Generator\n"
+        "• Cover Letters\n"
+        "• PDF Export\n"
+        "• Career Assistant\n"
+        "• Smart Profile Memory\n\n"
+        "💎 Free Plan:\n"
+        "3 resumes per day\n\n"
+        "👇 Press 'Create Resume' to start",
+        reply_markup=get_main_keyboard("en")
+    )
+
+
+@dp.message(lambda message: message.text == "🇺🇦 Українська")
+async def set_ukrainian(message: Message):
+    user_id = message.from_user.id
+    set_language_db(user_id, "ua")
+
+    await message.answer(
+        "🇺🇦 Українська увімкнена!\n\n"
+        "🚀 Ласкаво просимо до ResumeForge AI\n\n"
+        "Створюй професійні резюме та супровідні листи з AI.\n\n"
+        "📄 Можливості:\n"
+        "• AI-генерація резюме\n"
+        "• Супровідні листи\n"
+        "• Експорт у PDF\n"
+        "• Кар'єрний асистент\n"
+        "• Розумний профіль\n\n"
+        "💎 Безкоштовний план:\n"
+        "3 резюме на день\n\n"
+        "👇 Натисни 'Створити резюме' щоб почати",
+        reply_markup=get_main_keyboard("ua")
+    )
+
 
 
 @dp.message(
@@ -314,16 +360,6 @@ async def cancel_wizard(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ Створення резюме скасовано. Натисни /start, щоб почати заново.")
 
-@dp.message(lambda message: message.text == "🇺🇦 Українська")
-async def set_ua(message: Message):
-    # Тут можна зберігати мову в БД
-    await message.answer("✅ Українська мова активована", reply_markup=main_keyboard)
-
-@dp.message(lambda message: message.text == "🇬🇧 English")
-async def set_en(message: Message):
-    # Тут можна зберігати мову в БД
-    await message.answer("✅ English enabled", reply_markup=main_keyboard)
-
 
 @dp.message(Command("activate"))
 async def activate_premium(message: Message):
@@ -440,52 +476,6 @@ async def start(message: Message, command: CommandObject):
         "🌍 Choose your language / Оберіть мову:",
         reply_markup=language_keyboard
     )
-
-
-@dp.message(lambda message: message.text == "🇬🇧 English")
-async def set_english(message: Message):
-    user_id = message.from_user.id
-    set_language_db(user_id, "en")
-
-    await message.answer(
-        "🇬🇧 English enabled!\n\n"
-        "🚀 Welcome to ResumeForge AI\n\n"
-        "Create professional resumes and cover letters with AI.\n\n"
-        "📄 Features:\n"
-        "• AI Resume Generator\n"
-        "• Cover Letters\n"
-        "• PDF Export\n"
-        "• Career Assistant\n"
-        "• Smart Profile Memory\n\n"
-        "💎 Free Plan:\n"
-        "3 resumes per day\n\n"
-        "👇 Press 'Create Resume' to start",
-        reply_markup=get_main_keyboard("en")
-    )
-
-
-@dp.message(lambda message: message.text == "🇺🇦 Українська")
-async def set_ukrainian(message: Message):
-    user_id = message.from_user.id
-    set_language_db(user_id, "ua")
-
-    await message.answer(
-        "🇺🇦 Українська увімкнена!\n\n"
-        "🚀 Ласкаво просимо до ResumeForge AI\n\n"
-        "Створюй професійні резюме та супровідні листи з AI.\n\n"
-        "📄 Можливості:\n"
-        "• AI-генерація резюме\n"
-        "• Супровідні листи\n"
-        "• Експорт у PDF\n"
-        "• Кар'єрний асистент\n"
-        "• Розумний профіль\n\n"
-        "💎 Безкоштовний план:\n"
-        "3 резюме на день\n\n"
-        "👇 Натисни 'Створити резюме' щоб почати",
-        reply_markup=get_main_keyboard("ua")
-    )
-
-
 
 
 def reset_daily_limits():
@@ -693,10 +683,14 @@ async def ai_resume(message: Message):
 """
 
     # Виклик OpenAI
+    # Виклик OpenAI
     try:
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
-            messages=[...],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text}
+            ],
             timeout=30.0
         )
         ai_answer = response.choices[0].message.content
