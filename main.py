@@ -91,6 +91,7 @@ async def set_english(message: Message):
             [KeyboardButton(text="💌 Cover Letter")],
             [KeyboardButton(text="💎 Premium"), KeyboardButton(text="👤 Profile")],
             [KeyboardButton(text="🎁 Invite Friends"), KeyboardButton(text="❓ Help")]
+            [KeyboardButton(text="🌍 Change Language")]
         ],
         resize_keyboard=True
     )
@@ -103,6 +104,14 @@ async def set_english(message: Message):
         "👇 Press a button to start",
         reply_markup=keyboard
     )
+
+@dp.message(lambda message: message.text in ["🌍 Змінити мову", "🌍 Change Language"])
+async def change_language(message: Message):
+    language_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🇬🇧 English"), KeyboardButton(text="🇺🇦 Українська")]],
+        resize_keyboard=True
+    )
+    await message.answer("🌍 Choose your language / Оберіть мову:", reply_markup=language_keyboard)
 
 
 @dp.message(lambda message: message.text == "🇺🇦 Українська")
@@ -117,6 +126,7 @@ async def set_ukrainian(message: Message):
             [KeyboardButton(text="💌 Супровідний лист")],
             [KeyboardButton(text="💎 Преміум"), KeyboardButton(text="👤 Профіль")],
             [KeyboardButton(text="🎁 Запросити друзів"), KeyboardButton(text="❓ Допомога")]
+            [KeyboardButton(text="🌍 Змінити мову")]
         ],
         resize_keyboard=True
     )
@@ -502,9 +512,41 @@ async def main():
 async def create_resume(message: Message):
     await message.answer("Розкажи, яке резюме хочеш створити 👇")
 
+
 @dp.message(lambda message: message.text == "💌 Супровідний лист")
 async def cover_letter(message: Message):
-        await message.answer("Опиши вакансію, і я створю супровідний лист ✨")
+    await message.answer(
+        "📝 Опиши вакансію (посада, вимоги, компанія), і я створю супровідний лист.\n\n"
+        "Наприклад:\n"
+        "`Вакансія: Python Developer в компанії Tech Corp. "
+        "Вимоги: досвід 2+ роки, знання Django, PostgreSQL. "
+        "Мої навички: Python, Django, 2 роки досвіду.`"
+    )
+
+
+@dp.message()
+async def generate_cover_letter(message: Message):
+    # Перевіряємо, чи це відповідь на cover_letter
+    if message.text.startswith("Вакансія:") or "супровідний лист" in message.text.lower():
+        user_text = message.text
+        await message.answer("⏳ Створюю супровідний лист...")
+
+        user_lang = get_language_db(message.from_user.id)
+        if user_lang == "ua":
+            prompt = f"Напиши професійний супровідний лист на основі опису:\n{user_text}\nМова: українська"
+        else:
+            prompt = f"Write a professional cover letter based on:\n{user_text}\nLanguage: English"
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30.0
+            )
+            letter = response.choices[0].message.content
+            await message.answer(f"📄 *Супровідний лист*\n\n{letter}", parse_mode="Markdown")
+        except Exception as e:
+            await message.answer(f"❌ Помилка: {e}")
 
 
 @dp.message(lambda message: message.text == "👤 Профіль")
@@ -657,6 +699,16 @@ async def ai_resume(message: Message):
         (message.from_user.id,)
     )
     profile = cursor.fetchone()
+
+    # Якщо профайлу немає, використовуємо текст повідомлення як опис
+    if not profile:
+        user_text = message.text
+        if user_text and user_text != "Розкажи, яке резюме хочеш створити 👇":
+            # Використовуємо текст для генерації
+            pass
+        else:
+            await message.answer("⚠️ Напиши, яке резюме хочеш створити, або спочатку збережи профіль через 👤 Профіль")
+            return
 
     # Промпт
     # Отримуємо мову користувача
