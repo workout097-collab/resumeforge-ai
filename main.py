@@ -16,6 +16,9 @@ import psycopg2
 import asyncio
 from fpdf import FPDF
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+# Додати після інших імпортів (десь після рядка 20)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(BASE_DIR, "DejaVuSans.ttf")
 load_dotenv()
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -90,7 +93,7 @@ async def set_english(message: Message):
             [KeyboardButton(text="🚀 Create Resume (step by step)")],
             [KeyboardButton(text="💌 Cover Letter")],
             [KeyboardButton(text="💎 Premium"), KeyboardButton(text="👤 Profile")],
-            [KeyboardButton(text="🎁 Invite Friends"), KeyboardButton(text="❓ Help")]
+            [KeyboardButton(text="🎁 Invite Friends"), KeyboardButton(text="❓ Help")],
             [KeyboardButton(text="🌍 Change Language")]
         ],
         resize_keyboard=True
@@ -125,7 +128,7 @@ async def set_ukrainian(message: Message):
             [KeyboardButton(text="🚀 Створити резюме (покроково)")],
             [KeyboardButton(text="💌 Супровідний лист")],
             [KeyboardButton(text="💎 Преміум"), KeyboardButton(text="👤 Профіль")],
-            [KeyboardButton(text="🎁 Запросити друзів"), KeyboardButton(text="❓ Допомога")]
+            [KeyboardButton(text="🎁 Запросити друзів"), KeyboardButton(text="❓ Допомога")],
             [KeyboardButton(text="🌍 Змінити мову")]
         ],
         resize_keyboard=True
@@ -272,6 +275,15 @@ async def start_resume_wizard(message: Message, state: FSMContext):
         "1️⃣ Напиши свою **професію** або **назву посади** (наприклад: 'Python Backend Developer'):"
 
     )
+
+def safe_set_font(pdf):
+    try:
+        pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
+        pdf.set_font("DejaVu", "", 12)
+        return True
+    except:
+        pdf.set_font("Helvetica", "", 12)
+        return False
 
 
 def generate_docx(ai_answer: str, filename: str = "resume.docx"):
@@ -425,6 +437,296 @@ async def activate_premium(message: Message):
         await message.answer("❌ Формат: /activate user_id")
 
 
+@dp.message()
+async def handle_messages(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+
+    conn, cursor = get_db()
+
+    # ----- 1. ПЕРЕВІРКА НА COVER LETTER -----
+    # Якщо повідомлення починається з "Вакансія:" або містить ключові слова
+    if message.text.startswith("Вакансія:") or "супровідний лист" in message.text.lower() or message.text.startswith(
+            "Job:"):
+        await message.answer("⏳ Створюю супровідний лист...")
+
+        user_lang = get_language_db(message.from_user.id)
+        if user_lang == "ua":
+            prompt = f"Напиши професійний супровідний лист на основі опису:\n{message.text}\nМова: українська"
+        else:
+            prompt = f"Write a professional cover letter based on:\n{message.text}\nLanguage: English"
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30.0
+            )
+            letter = response.choices[0].message.content
+            await message.answer(f"📄 *Супровідний лист*\n\n{letter}", parse_mode="Markdown")
+        except Exception as e:
+            await message.answer(f"❌ Помилка: {e}")
+        return
+
+    # ----- 2. ПЕРЕВІРКА НА ТЕКСТ-ЗАПОВНЕННЯ ПРОФІЛЮ -----
+    if "Profession:" in message.text and "Skills:" in message.text:
+        lines = message.text.split("\n")
+        profession = lines[0].replace("Profession:", "").strip()
+        skills = lines[1].replace("Skills:", "").strip()
+        experience = lines[2].replace("Experience:", "").strip()
+        education = lines[3].replace("Education:", "").strip()
+
+        cursor.execute(
+            """
+            INSERT INTO profiles (telegram_id, profession, skills, experience, education)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (telegram_id) DO UPDATE SET
+                profession = EXCLUDED.profession,
+                skills = EXCLUDED.skills,
+                experience = EXCLUDED.experience,
+                education = EXCLUDED.education
+            """,
+            (message.from_user.id, profession, skills, experience, education)
+        )
+        conn.commit()
+        await message.answer("✅ Profile saved!")
+        return
+
+    # ----- 3. СТВОРЕННЯ РЕЗЮМЕ (ОСНОВНА ЛОГІКА) -----
+    # Перевірка чи це не службове повідомлення
+    if message.text in ["📝 Створити резюме", "📝 Create Resume"]:
+        await message.answer("Розкажи, яке резюме хочеш створити 👇")
+        return
+
+    if message.text in ["💌 Супровідний лист", "💌 Cover Letter"]:
+        await message.answer(
+            "📝 Опиши вакансію (посада, вимоги, компанія), і я створю супровідний лист.\n\n"
+            "Наприклад:\n"
+            "`Вакансія: Python Developer в компанії Tech Corp. "
+            "Вимоги: досвід 2+ роки, знання Django, PostgreSQL. "
+            "Мої навички: Python, Django, 2 роки досвіду.`"
+        )
+        return
+
+    # Ігноруємо інші кнопки меню
+    menu_buttons = [
+        "🚀 Створити резюме (покроково)", "🚀 Create Resume (step by step)",
+        "💎 Преміум", "💎 Premium",
+        "👤 Профіль", "👤 Profile",
+        "🎁 Запросити друзів", "🎁 Invite Friends",
+        "❓ Допомога", "❓ Help",
+        "🌍 Змінити мову", "🌍 Change Language"
+    ]
+    if message.text in menu_buttons:
+        return
+
+    # ----- 4. ГЕНЕРАЦІЯ РЕЗЮМЕ -----
+    # Перевірка лімітів
+    cursor.execute(
+        "SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s",
+        (message.from_user.id,)
+    )
+    subscription = cursor.fetchone()
+
+    if not subscription:
+        cursor.execute(
+            "INSERT INTO subscriptions (telegram_id) VALUES (%s)",
+            (message.from_user.id,)
+        )
+        conn.commit()
+        cursor.execute(
+            "SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s",
+            (message.from_user.id,)
+        )
+        subscription = cursor.fetchone()
+
+    resumes_today, is_premium = subscription
+
+    if not is_premium and resumes_today >= 3:
+        await message.answer("❌ Безкоштовний ліміт вичерпано. Купи Premium для безліміту.")
+        return
+
+    await message.answer("⏳ Створюю твоє резюме...")
+
+    user_text = message.text
+
+    # Отримуємо профайл
+    cursor.execute(
+        "SELECT profession, skills, experience, education FROM profiles WHERE telegram_id = %s",
+        (message.from_user.id,)
+    )
+    profile = cursor.fetchone()
+
+    if not profile or all(v is None for v in profile):
+        await message.answer("⚠️ Спочатку збережи свій профіль через кнопку 👤 Профіль, або напиши опис бажаної роботи")
+        return
+
+    # Промпт
+    user_lang = get_language_db(message.from_user.id)
+
+    if user_lang == "ua":
+        system_prompt = f"""
+    Ти професійний автор резюме. Створи професійне резюме на основі профайлу користувача.
+    Використовуй УКРАЇНСЬКУ МОВУ для всього резюме.
+
+    ПРОФАЙЛ КОРИСТУВАЧА:
+    Професія: {profile[0] if profile else "Не вказано"}
+    Навички: {profile[1] if profile else "Не вказано"}
+    Досвід: {profile[2] if profile else "Не вказано"}
+    Освіта: {profile[3] if profile else "Не вказано"}
+
+    **ВАЖЛИВО:**
+    - Використовуй стандартні заголовки: "Досвід роботи", "Навички", "Освіта", "Про себе"
+    - Не використовуй таблиці, колонки, графіку
+    - Додай 1-2 досягнення з цифрами
+    - Мова: українська
+    """
+    else:
+        system_prompt = f"""
+    You are a professional resume writer. Create a professional resume based on the user's profile.
+
+    USER PROFILE:
+    Profession: {profile[0] if profile else "Not specified"}
+    Skills: {profile[1] if profile else "Not specified"}
+    Experience: {profile[2] if profile else "Not specified"}
+    Education: {profile[3] if profile else "Not specified"}
+
+    **IMPORTANT GUIDELINES:**
+    - Use standard ATS-friendly headings: "Work Experience", "Skills", "Education", "Summary"
+    - Do NOT use tables, columns, or graphics
+    - Add 1-2 quantifiable achievements
+    - Language: English
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text}
+            ],
+            timeout=30.0
+        )
+        ai_answer = response.choices[0].message.content
+    except Exception as e:
+        await message.answer(f"❌ Помилка AI: {str(e)}\nСпробуй ще раз пізніше.")
+        return
+
+    # Оновлюємо лічильник
+    cursor.execute(
+        "UPDATE subscriptions SET resumes_today = resumes_today + 1 WHERE telegram_id = %s",
+        (message.from_user.id,)
+    )
+    conn.commit()
+
+    # Зберігаємо в історію
+    cursor.execute(
+        "INSERT INTO messages (telegram_id, user_message, bot_response) VALUES (%s, %s, %s)",
+        (message.from_user.id, user_text, ai_answer)
+    )
+    conn.commit()
+
+    # Генерація DOCX та PDF (тут ваш код)
+    docx_file = generate_docx(ai_answer, "resume.docx")
+    docx_document = FSInputFile(docx_file)
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    # Перевіряємо наявність шрифту
+    try:
+        pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+        pdf.set_font("DejaVu", "", 12)
+        font_ok = True
+    except:
+        font_ok = False
+        pdf.set_font("Helvetica", "", 12)
+
+    pdf.set_font("DejaVu" if font_ok else "Helvetica", "B", 20)
+    pdf.cell(0, 10, "Professional Resume", ln=True, align='C')
+    pdf.set_font("DejaVu" if font_ok else "Helvetica", "I", 10)
+    pdf.cell(0, 10, "Generated by ResumeForge AI", ln=True, align='C')
+    pdf.ln(10)
+
+    pdf.set_font("DejaVu" if font_ok else "Helvetica", "", 12)
+    for line in ai_answer.split('\n'):
+        if isinstance(line, bytes):
+            line = line.decode('utf-8')
+        while len(line) > 80:
+            pdf.cell(0, 6, line[:80], ln=True)
+            line = line[80:]
+        pdf.cell(0, 6, line, ln=True)
+        pdf.ln(2)
+
+    pdf_file = "resume.pdf"
+    pdf.output(pdf_file)
+    pdf_document = FSInputFile(pdf_file)
+
+    await message.answer_document(document=pdf_document, caption="📄 Твоє резюме (PDF) готове!")
+    await message.answer_document(document=docx_document, caption="📝 Твоє резюме (DOCX) — можна редагувати у Word!")
+
+
+@dp.message(lambda message: message.text in ["👤 Профіль", "👤 Profile"])
+async def profile_info(message: Message):
+    conn, cursor = get_db()
+    try:
+        cursor.execute(
+            """
+            SELECT is_premium, referrals, resumes_today
+            FROM subscriptions
+            WHERE telegram_id = %s
+            """,
+            (message.from_user.id,)
+        )
+        subscription = cursor.fetchone()
+
+        if subscription:
+            is_premium = subscription[0]
+            referrals = subscription[1]
+            resumes_today = subscription[2]
+            status = "💎 PREMIUM" if is_premium else "🆓 FREE"
+
+            await message.answer(
+                f"""👤 Твій Профіль
+
+{status}
+
+📄 Резюме сьогодні: {resumes_today}/3
+
+👥 Запрошення: {referrals}/3
+
+━━━━━━━━━━
+
+Надішли свій профіль у такому форматі:
+
+Професія: Python Developer
+Навички: FastAPI, PostgreSQL, Docker
+Досвід: 2 роки
+Освіта: Комп'ютерні науки"""
+            )
+        else:
+            await message.answer("❌ Профіль не знайдено")
+    finally:
+        cursor.close()
+        conn.close()
+
+@dp.message(lambda message: message.text in ["❓ Допомога", "❓ Help"])
+async def help_menu(message: Message):
+    await message.answer(
+        """📌 Як користуватися ResumeForge AI
+
+1. Натисни 📝 Створити резюме
+2. Опиши свою бажану роботу
+3. AI створить професійне резюме
+4. Завантаж PDF миттєво
+
+💎 Преміум:
+• Безліміт резюме
+• Краща якість AI
+• Супровідні листи"""
+    )
+
 @dp.message(lambda message: message.text == "🎁 Запросити друзів")
 async def invite_friends(message: Message):
     conn, cursor = get_db()
@@ -506,314 +808,6 @@ async def main():
     )
     scheduler.start()
     await dp.start_polling(bot)
-
-
-@dp.message(lambda message: message.text == "📝 Створити резюме")
-async def create_resume(message: Message):
-    await message.answer("Розкажи, яке резюме хочеш створити 👇")
-
-
-@dp.message(lambda message: message.text == "💌 Супровідний лист")
-async def cover_letter(message: Message):
-    await message.answer(
-        "📝 Опиши вакансію (посада, вимоги, компанія), і я створю супровідний лист.\n\n"
-        "Наприклад:\n"
-        "`Вакансія: Python Developer в компанії Tech Corp. "
-        "Вимоги: досвід 2+ роки, знання Django, PostgreSQL. "
-        "Мої навички: Python, Django, 2 роки досвіду.`"
-    )
-
-
-@dp.message()
-async def generate_cover_letter(message: Message):
-    # Перевіряємо, чи це відповідь на cover_letter
-    if message.text.startswith("Вакансія:") or "супровідний лист" in message.text.lower():
-        user_text = message.text
-        await message.answer("⏳ Створюю супровідний лист...")
-
-        user_lang = get_language_db(message.from_user.id)
-        if user_lang == "ua":
-            prompt = f"Напиши професійний супровідний лист на основі опису:\n{user_text}\nМова: українська"
-        else:
-            prompt = f"Write a professional cover letter based on:\n{user_text}\nLanguage: English"
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[{"role": "user", "content": prompt}],
-                timeout=30.0
-            )
-            letter = response.choices[0].message.content
-            await message.answer(f"📄 *Супровідний лист*\n\n{letter}", parse_mode="Markdown")
-        except Exception as e:
-            await message.answer(f"❌ Помилка: {e}")
-
-
-@dp.message(lambda message: message.text == "👤 Профіль")
-async def profile_info(message: Message):
-
-    conn, cursor = get_db()
-
-    cursor.execute(
-        """
-        SELECT is_premium, referrals, resumes_today
-        FROM subscriptions
-        WHERE telegram_id = %s
-        """,
-        (message.from_user.id,)
-    )
-
-    subscription = cursor.fetchone()
-
-    is_premium = subscription[0]
-    referrals = subscription[1]
-    resumes_today = subscription[2]
-
-    status = "💎 PREMIUM" if is_premium else "🆓 FREE"
-
-    await message.answer(
-        f"""
-    👤 Твій Профіль
-
-    {status}
-
-    📄 Резюме сьогодні: {resumes_today}/3
-
-    👥 Запрошення: {referrals}/3
-
-    ━━━━━━━━━━
-
-    Надішли свій профіль у такому форматі:
-
-    Професія: Python Developer
-    Навички: FastAPI, PostgreSQL, Docker
-    Досвід: 2 роки
-    Освіта: Комп'ютерні науки
-    """
-    )
-
-@dp.message(lambda message: "Profession:" in message.text)
-async def save_profile(message: Message):
-
-    conn, cursor = get_db()
-
-    text = message.text
-
-    lines = text.split("\n")
-
-    profession = lines[0].replace("Profession:", "").strip()
-    skills = lines[1].replace("Skills:", "").strip()
-    experience = lines[2].replace("Experience:", "").strip()
-    education = lines[3].replace("Education:", "").strip()
-
-    cursor.execute(
-        """
-        INSERT INTO profiles (
-            telegram_id,
-            profession,
-            skills,
-            experience,
-            education
-        )
-        VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (telegram_id)
-        DO UPDATE SET
-            profession = EXCLUDED.profession,
-            skills = EXCLUDED.skills,
-            experience = EXCLUDED.experience,
-            education = EXCLUDED.education
-        """,
-        (
-            message.from_user.id,
-            profession,
-            skills,
-            experience,
-            education
-        )
-    )
-
-
-    conn.commit()
-
-    await message.answer(
-        "✅ Profile saved!"
-    )
-
-
-
-@dp.message(lambda message: message.text == "❓ Допомога")
-async def help_menu(message: Message):
-    await message.answer(
-        """
-    📌 Як користуватися ResumeForge AI
-
-    1. Натисни 📝 Створити резюме
-    2. Опиши свою бажану роботу
-    3. AI створить професійне резюме
-    4. Завантаж PDF миттєво
-
-    💎 Преміум:
-    • Безліміт резюме
-    • Краща якість AI
-    • Супровідні листи
-    """
-    )
-
-
-@dp.message()
-async def ai_resume(message: Message):
-    conn, cursor = get_db()
-
-    # Перевірка лімітів
-    cursor.execute(
-        "SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s",
-        (message.from_user.id,)
-    )
-    subscription = cursor.fetchone()
-
-    if not subscription:
-        cursor.execute(
-            "INSERT INTO subscriptions (telegram_id) VALUES (%s)",
-            (message.from_user.id,)
-        )
-        conn.commit()
-        cursor.execute(
-            "SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s",
-            (message.from_user.id,)
-        )
-        subscription = cursor.fetchone()
-
-    resumes_today, is_premium = subscription
-
-    if not is_premium and resumes_today >= 3:
-        await message.answer("❌ Безкоштовний ліміт вичерпано. Купи Premium для безліміту.")
-        return
-
-    await message.answer("⏳ Створюю твоє резюме...")
-
-    user_text = message.text
-
-    # Отримуємо профайл
-    cursor.execute(
-        "SELECT profession, skills, experience, education FROM profiles WHERE telegram_id = %s",
-        (message.from_user.id,)
-    )
-    profile = cursor.fetchone()
-
-    # Якщо профайлу немає, використовуємо текст повідомлення як опис
-    if not profile:
-        user_text = message.text
-        if user_text and user_text != "Розкажи, яке резюме хочеш створити 👇":
-            # Використовуємо текст для генерації
-            pass
-        else:
-            await message.answer("⚠️ Напиши, яке резюме хочеш створити, або спочатку збережи профіль через 👤 Профіль")
-            return
-
-    # Промпт
-    # Отримуємо мову користувача
-    user_lang = get_language_db(message.from_user.id)
-
-    if user_lang == "ua":
-        system_prompt = f"""
-    Ти професійний автор резюме. Створи професійне резюме на основі профайлу користувача.
-    Використовуй УКРАЇНСЬКУ МОВУ для всього резюме.
-
-    ПРОФАЙЛ КОРИСТУВАЧА:
-    Професія: {profile[0] if profile else "Не вказано"}
-    Навички: {profile[1] if profile else "Не вказано"}
-    Досвід: {profile[2] if profile else "Не вказано"}
-    Освіта: {profile[3] if profile else "Не вказано"}
-
-    **ВАЖЛИВО:**
-    - Використовуй стандартні заголовки: "Досвід роботи", "Навички", "Освіта", "Про себе"
-    - Не використовуй таблиці, колонки, графіку
-    - Додай 1-2 досягнення з цифрами
-    - Мова: українська
-    """
-    else:
-        system_prompt = f"""
-    You are a professional resume writer. Create a professional resume based on the user's profile.
-
-    USER PROFILE:
-    Profession: {profile[0] if profile else "Not specified"}
-    Skills: {profile[1] if profile else "Not specified"}
-    Experience: {profile[2] if profile else "Not specified"}
-    Education: {profile[3] if profile else "Not specified"}
-
-    **IMPORTANT GUIDELINES:**
-    - Use standard ATS-friendly headings: "Work Experience", "Skills", "Education", "Summary"
-    - Do NOT use tables, columns, or graphics
-    - Add 1-2 quantifiable achievements
-    - Language: English
-    """
-
-    # Виклик OpenAI
-    # Виклик OpenAI
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_text}
-            ],
-            timeout=30.0
-        )
-        ai_answer = response.choices[0].message.content
-    except Exception as e:
-        await message.answer(f"❌ Помилка AI: {str(e)}\nСпробуй ще раз пізніше.")
-        return
-
-    # Оновлюємо лічильник
-    cursor.execute(
-        "UPDATE subscriptions SET resumes_today = resumes_today + 1 WHERE telegram_id = %s",
-        (message.from_user.id,)
-    )
-    conn.commit()
-
-    # Зберігаємо в історію
-    cursor.execute(
-        "INSERT INTO messages (telegram_id, user_message, bot_response) VALUES (%s, %s, %s)",
-        (message.from_user.id, user_text, ai_answer)
-    )
-    conn.commit()
-
-    # Генерація DOCX
-    docx_file = generate_docx(ai_answer, "resume.docx")
-    docx_document = FSInputFile(docx_file)
-
-    # Генерація PDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
-    pdf.set_font("DejaVu", "", 12)
-
-    # Заголовок
-    pdf.set_font("DejaVu", "B", 20)
-    pdf.cell(0, 10, "Professional Resume", ln=True, align='C')
-    pdf.set_font("DejaVu", "I", 10)
-    pdf.cell(0, 10, "Generated by ResumeForge AI", ln=True, align='C')
-    pdf.ln(10)
-
-    # Тіло
-    pdf.set_font("DejaVu", "", 12)
-    for line in ai_answer.split('\n'):
-        if isinstance(line, bytes):
-            line = line.decode('utf-8')
-        while len(line) > 80:
-            pdf.cell(0, 6, line[:80], ln=True)
-            line = line[80:]
-        pdf.cell(0, 6, line, ln=True)
-        pdf.ln(2)
-
-    pdf_file = "resume.pdf"
-    pdf.output(pdf_file)
-    pdf_document = FSInputFile(pdf_file)
-
-    # Надсилаємо обидва файли
-    await message.answer_document(document=pdf_document, caption="📄 Твоє резюме (PDF) готове!")
-    await message.answer_document(document=docx_document, caption="📝 Твоє резюме (DOCX) — можна редагувати у Word!")
-
 
 
 if __name__ == "__main__":
