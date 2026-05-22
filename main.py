@@ -614,14 +614,16 @@ async def ai_resume(message: Message):
 """
 
     # Виклик OpenAI
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{user_text}\n\nБудь ласка, створи повне професійне резюме."}
-        ]
-    )
-    ai_answer = response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[...],
+            timeout=30.0
+        )
+        ai_answer = response.choices[0].message.content
+    except Exception as e:
+        await message.answer(f"❌ Помилка AI: {str(e)}\nСпробуй ще раз пізніше.")
+        return
 
     # Оновлюємо лічильник
     cursor.execute(
