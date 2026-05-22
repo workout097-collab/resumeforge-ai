@@ -438,20 +438,18 @@ async def activate_premium(message: Message):
 
 @dp.message()
 async def handle_messages(message: Message, state: FSMContext):
-        # Перевірка FSM
-        current_state = await state.get_state()
-        if current_state is not None:
-            return
+    # Перевірка FSM
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
 
-        # Отримуємо мову користувача
-        user_lang = get_language_db(message.from_user.id)
+    # Отримуємо мову користувача
+    user_lang = get_language_db(message.from_user.id)
 
-        conn, cursor = get_db()
+    conn, cursor = get_db()
 
     # ----- 1. ПЕРЕВІРКА НА COVER LETTER -----
-    # Якщо повідомлення починається з "Вакансія:" або містить ключові слова
-    if message.text.startswith("Вакансія:") or "супровідний лист" in message.text.lower() or message.text.startswith(
-            "Job:"):
+    if message.text.startswith("Вакансія:") or "супровідний лист" in message.text.lower() or message.text.startswith("Job:"):
         await message.answer("⏳ Створюю супровідний лист...")
 
         user_lang = get_language_db(message.from_user.id)
@@ -476,7 +474,7 @@ async def handle_messages(message: Message, state: FSMContext):
     if "Profession:" in message.text and "Skills:" in message.text:
         lines = message.text.split("\n")
         profession = lines[0].replace("Profession:", "").strip()
-        skills = lines[1].replace("Skills:", "").strip()
+        skills = lines[1]. replace("Skills:", "").strip()
         experience = lines[2].replace("Experience:", "").strip()
         education = lines[3].replace("Education:", "").strip()
 
@@ -496,6 +494,7 @@ async def handle_messages(message: Message, state: FSMContext):
         await message.answer("✅ Profile saved!")
         return
 
+    # ----- 3. ОБРОБКА КНОПОК "СТВОРИТИ РЕЗЮМЕ" -----
     if message.text == "📝 Create Resume":
         await state.update_data(waiting_for_resume=True)
         await message.answer("Tell me about the job you want (e.g., 'Python Developer with 2 years experience'):")
@@ -528,109 +527,102 @@ async def handle_messages(message: Message, state: FSMContext):
     if message.text in menu_buttons:
         return
 
-# ----- 3.5. ПЕРЕВІРКА, ЧИ ОЧІКУЄМО ТЕКСТ ДЛЯ РЕЗЮМЕ -----
-user_data = await state.get_data()
-if user_data.get("waiting_for_resume"):
-    # Очищаємо прапорець
-    await state.update_data(waiting_for_resume=False)
+    # ----- 4. ПЕРЕВІРКА, ЧИ ОЧІКУЄМО ТЕКСТ ДЛЯ РЕЗЮМЕ -----
+    user_data = await state.get_data()
+    if user_data.get("waiting_for_resume"):
+        await state.update_data(waiting_for_resume=False)
+        user_text = message.text
 
-    # Отримуємо текст від користувача
-    user_text = message.text
-
-    # Перевірка лімітів
-    cursor.execute(
-        "SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s",
-        (message.from_user.id,)
-    )
-    subscription = cursor.fetchone()
-    if not subscription:
-        cursor.execute("INSERT INTO subscriptions (telegram_id) VALUES (%s)", (message.from_user.id,))
-        conn.commit()
-        cursor.execute("SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s",
-                       (message.from_user.id,))
+        # Перевірка лімітів
+        cursor.execute(
+            "SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s",
+            (message.from_user.id,)
+        )
         subscription = cursor.fetchone()
+        if not subscription:
+            cursor.execute("INSERT INTO subscriptions (telegram_id) VALUES (%s)", (message.from_user.id,))
+            conn.commit()
+            cursor.execute("SELECT resumes_today, is_premium FROM subscriptions WHERE telegram_id = %s", (message.from_user.id,))
+            subscription = cursor.fetchone()
 
-    resumes_today, is_premium = subscription
+        resumes_today, is_premium = subscription
 
-    if not is_premium and resumes_today >= 3:
-        await message.answer(
-            "❌ Free limit reached. Buy Premium for unlimited." if user_lang == "en" else "❌ Безкоштовний ліміт вичерпано. Купи Premium.")
+        if not is_premium and resumes_today >= 3:
+            await message.answer("❌ Free limit reached. Buy Premium for unlimited." if user_lang == "en" else "❌ Безкоштовний ліміт вичерпано. Купи Premium.")
+            return
+
+        await message.answer("⏳ Creating your resume..." if user_lang == "en" else "⏳ Створюю твоє резюме...")
+
+        # Отримуємо профіль
+        cursor.execute("SELECT profession, skills, experience, education FROM profiles WHERE telegram_id = %s", (message.from_user.id,))
+        profile = cursor.fetchone()
+
+        # Формуємо промпт
+        if user_lang == "ua":
+            prompt = f"Створи професійне резюме на основі: {user_text}"
+            if profile and any(profile):
+                prompt += f"\n\nДодаткова інформація з профілю:\nПрофесія: {profile[0]}\nНавички: {profile[1]}\nДосвід: {profile[2]}\nОсвіта: {profile[3]}"
+        else:
+            prompt = f"Create a professional resume based on: {user_text}"
+            if profile and any(profile):
+                prompt += f"\n\nAdditional profile info:\nProfession: {profile[0]}\nSkills: {profile[1]}\nExperience: {profile[2]}\nEducation: {profile[3]}"
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30.0
+            )
+            ai_answer = response.choices[0].message.content
+
+            # Оновлюємо лічильник
+            cursor.execute("UPDATE subscriptions SET resumes_today = resumes_today + 1 WHERE telegram_id = %s", (message.from_user.id,))
+            conn.commit()
+
+            # Генерація DOCX
+            docx_file = generate_docx(ai_answer, "resume.docx")
+            docx_document = FSInputFile(docx_file)
+
+            # Генерація PDF
+            pdf = FPDF()
+            pdf.add_page()
+            try:
+                pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+                pdf.set_font("DejaVu", "", 12)
+                font_ok = True
+            except:
+                font_ok = False
+                pdf.set_font("Helvetica", "", 12)
+
+            pdf.set_font("DejaVu" if font_ok else "Helvetica", "B", 20)
+            pdf.cell(0, 10, "Professional Resume", ln=True, align='C')
+            pdf.set_font("DejaVu" if font_ok else "Helvetica", "I", 10)
+            pdf.cell(0, 10, "Generated by ResumeForge AI", ln=True, align='C')
+            pdf.ln(10)
+
+            pdf.set_font("DejaVu" if font_ok else "Helvetica", "", 12)
+            for line in ai_answer.split('\n'):
+                if isinstance(line, bytes):
+                    line = line.decode('utf-8')
+                while len(line) > 80:
+                    pdf.cell(0, 6, line[:80], ln=True)
+                    line = line[80:]
+                pdf.cell(0, 6, line, ln=True)
+                pdf.ln(2)
+
+            pdf_file = "resume.pdf"
+            pdf.output(pdf_file)
+            pdf_document = FSInputFile(pdf_file)
+
+            await message.answer_document(document=pdf_document, caption="📄 Your resume (PDF) is ready!" if user_lang == "en" else "📄 Твоє резюме (PDF) готове!")
+            await message.answer_document(document=docx_document, caption="📝 Your resume (DOCX) — editable in Word!" if user_lang == "en" else "📝 Твоє резюме (DOCX) — можна редагувати у Word!")
+
+        except Exception as e:
+            await message.answer(f"❌ Error: {e}")
         return
 
-    await message.answer("⏳ Creating your resume..." if user_lang == "en" else "⏳ Створюю твоє резюме...")
-
-    # Отримуємо профіль (якщо є)
-    cursor.execute("SELECT profession, skills, experience, education FROM profiles WHERE telegram_id = %s",
-                   (message.from_user.id,))
-    profile = cursor.fetchone()
-
-    # Формуємо промпт
-    if user_lang == "ua":
-        prompt = f"Створи професійне резюме на основі: {user_text}"
-        if profile and any(profile):
-            prompt += f"\n\nДодаткова інформація з профілю:\nПрофесія: {profile[0]}\nНавички: {profile[1]}\nДосвід: {profile[2]}\nОсвіта: {profile[3]}"
-    else:
-        prompt = f"Create a professional resume based on: {user_text}"
-        if profile and any(profile):
-            prompt += f"\n\nAdditional profile info:\nProfession: {profile[0]}\nSkills: {profile[1]}\nExperience: {profile[2]}\nEducation: {profile[3]}"
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
-            timeout=30.0
-        )
-        ai_answer = response.choices[0].message.content
-
-        # Оновлюємо лічильник
-        cursor.execute("UPDATE subscriptions SET resumes_today = resumes_today + 1 WHERE telegram_id = %s",
-                       (message.from_user.id,))
-        conn.commit()
-
-        # Генерація DOCX
-        docx_file = generate_docx(ai_answer, "resume.docx")
-        docx_document = FSInputFile(docx_file)
-
-        # Генерація PDF
-        pdf = FPDF()
-        pdf.add_page()
-        try:
-            pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
-            pdf.set_font("DejaVu", "", 12)
-            font_ok = True
-        except:
-            font_ok = False
-            pdf.set_font("Helvetica", "", 12)
-
-        pdf.set_font("DejaVu" if font_ok else "Helvetica", "B", 20)
-        pdf.cell(0, 10, "Professional Resume", ln=True, align='C')
-        pdf.set_font("DejaVu" if font_ok else "Helvetica", "I", 10)
-        pdf.cell(0, 10, "Generated by ResumeForge AI", ln=True, align='C')
-        pdf.ln(10)
-
-        pdf.set_font("DejaVu" if font_ok else "Helvetica", "", 12)
-        for line in ai_answer.split('\n'):
-            if isinstance(line, bytes):
-                line = line.decode('utf-8')
-            while len(line) > 80:
-                pdf.cell(0, 6, line[:80], ln=True)
-                line = line[80:]
-            pdf.cell(0, 6, line, ln=True)
-            pdf.ln(2)
-
-        pdf_file = "resume.pdf"
-        pdf.output(pdf_file)
-        pdf_document = FSInputFile(pdf_file)
-
-        await message.answer_document(document=pdf_document,
-                                      caption="📄 Your resume (PDF) is ready!" if user_lang == "en" else "📄 Твоє резюме (PDF) готове!")
-        await message.answer_document(document=docx_document,
-                                      caption="📝 Your resume (DOCX) — editable in Word!" if user_lang == "en" else "📝 Твоє резюме (DOCX) — можна редагувати у Word!")
-
-    except Exception as e:
-        await message.answer(f"❌ Error: {e}")
-
-    return
+    # ----- 5. ЯКЩО НІЧОГО НЕ ПІДІЙШЛО -----
+    await message.answer("I didn't understand. Please use the buttons." if user_lang == "en" else "Я не зрозумів. Будь ласка, скористайтеся кнопками.")
 
 
 @dp.message(lambda message: message.text in ["👤 Профіль", "👤 Profile"])
