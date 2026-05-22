@@ -9,7 +9,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 print(DATABASE_URL)
 
 conn = psycopg2.connect(DATABASE_URL)
-
+import sqlite3
 cursor = conn.cursor()
 
 print("Database connected!")

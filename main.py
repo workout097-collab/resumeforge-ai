@@ -5,7 +5,7 @@ from aiogram.filters import StateFilter
 from aiogram.filters import Command, CommandStart  # ← ДОДАЙ Command
 from translations import translations
 from aiogram.types import Message
-#from database import set_language_db, get_language_db
+from database import set_language_db, get_language_db
 from openai import OpenAI
 from dotenv import load_dotenv
 from docx import Document
